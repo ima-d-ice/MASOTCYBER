@@ -1,0 +1,12 @@
+stage: P4
+window_size: 30
+features:
+- AIT401
+- AIT402
+- FIT401
+- LIT401
+- P401
+- P402
+- P403
+- P404
+- UV401

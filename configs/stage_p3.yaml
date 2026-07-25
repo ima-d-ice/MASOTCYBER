@@ -1,0 +1,12 @@
+stage: P3
+window_size: 30
+features:
+- DPIT301
+- FIT301
+- LIT301
+- MV301
+- MV302
+- MV303
+- MV304
+- P301
+- P302

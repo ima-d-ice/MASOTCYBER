@@ -1,0 +1,8 @@
+stage: P1
+window_size: 30
+features:
+- FIT101
+- LIT101
+- MV101
+- P101
+- P102

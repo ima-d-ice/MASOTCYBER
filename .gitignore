@@ -1,0 +1,37 @@
+# Virtual environment
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Environment / Secrets
+.env
+
+# macOS
+.DS_Store
+
+# Model weights (large binary files)
+weights/*.pth
+
+# Data (large files)
+data/*.csv
+venv/
+.venv/
+data/*.csv
+*.csv
+
+# Runtime outputs
+audit_logs.jsonl
+mas_langgraph_results.csv
+mas_langgraph_logs.json
+/reports/
+sweep_results.csv
+sweep_hyperparams_no_llm.py
+sweep_summary.md
+grade_report.md
+grade_system.py
+analyze_sweep.py

@@ -1,0 +1,8 @@
+stage: P6
+window_size: 30
+features:
+- FIT601
+- P601
+- P602
+- P603
+fold_into_p5: false

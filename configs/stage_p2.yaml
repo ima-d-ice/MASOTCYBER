@@ -1,0 +1,14 @@
+stage: P2
+window_size: 30
+features:
+- AIT201
+- AIT202
+- AIT203
+- FIT201
+- MV201
+- P201
+- P202
+- P203
+- P204
+- P205
+- P206
