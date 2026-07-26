@@ -1,6 +1,6 @@
-# MAS — Multi-Agent Anomaly Detection for Industrial Control Systems
+# OT MAS — Operational Technology Multi-Agent System
 
-A multi-agent system for SWaT anomaly detection that combines TranAD-based detectors, a persistence-based escalation gate, and LLM-based investigators/orchestration.
+An operational technology anomaly detection system for SWaT that combines TranAD-based detectors, a persistence-based escalation gate, and LLM-based investigators and orchestration.
 
 <p align="center">
 <img src="https://img.shields.io/badge/PA--F1-0.8541-brightgreen" alt="PA-F1">
@@ -58,7 +58,24 @@ This system processes SWaT windows in three stages:
 
 ## Architecture
 
-The pipeline is organized as:
+The pipeline is organized as follows:
+
+```mermaid
+flowchart TD
+    A[SWaT Sensor Data] --> B[TranAD Detector
+P1-P6]
+    B --> C[Escalation Gate]
+    C -->|Trigger| D[Investigator P3]
+    C -->|Trigger| E[Investigator P4]
+    C -->|Trigger| F[Investigator P5]
+    D --> G[Orchestrator]
+    E --> G
+    F --> G
+    C -->|No trigger| H[Pass Through]
+    G --> I[Final ATTACK / NORMAL Verdict]
+```
+
+The main components are:
 
 - [main.py](main.py) — entry point for running the full MAS pipeline
 - [graph.py](graph.py) — LangGraph orchestration flow
