@@ -10,6 +10,7 @@ __pycache__/
 
 # Environment / Secrets
 .env
+*.env
 
 # macOS
 .DS_Store
@@ -35,3 +36,4 @@ sweep_summary.md
 grade_report.md
 grade_system.py
 analyze_sweep.py
+groq_client.py
