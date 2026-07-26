@@ -33,8 +33,6 @@ This system processes SWaT windows in three stages:
 
 ## Current run summary
 
-The latest audited run used the current logs in [audit_logs.jsonl](audit_logs.jsonl) and produced the following metrics:
-
 ### Strict point-wise metrics
 - Precision: 0.9488
 - Recall: 0.2337
@@ -56,8 +54,7 @@ The latest audited run used the current logs in [audit_logs.jsonl](audit_logs.js
 - Total prompt tokens: 5,881,645
 - Total completion tokens: 2,484,765
 
-
-
+---
 
 ## Architecture
 
@@ -70,7 +67,7 @@ The pipeline is organized as:
 - [escalation_gate.py](escalation_gate.py) — triggering and recheck logic
 - [agents/investigator.py](agents/investigator.py) — per-stage LLM investigators
 - [agents/orchestrator.py](agents/orchestrator.py) — final decision aggregation
-- [groq_client.py](groq_client.py) — Groq API client with key rotation and rate-limit handling
+
 
 
 
@@ -85,20 +82,18 @@ python3 main.py
 
 ---
 
-## Notes
 
-This project is strongest as a precision-focused monitoring system: it keeps false positives low and produces useful incident reasoning, but it still has practical limitations in recall, cost, and robustness under heavy LLM usage.
-- audit_logs.jsonl — full audit trail
-- reports/ — incident reports for every triggered window
+## Environment variables
 
-Environment variables:
-Variable	Default	Description
-MAX_WINDOWS	5000	Number of windows to process
-START_WINDOW	0	Window index to start from
-GATE_PERSISTENCE	2	Consecutive breaches required to trigger
-GATE_SEVERITY_MULT	1.0	Score multiplier filter (1.0 = disabled)
-GATE_RECHECK	none	Fixed recheck interval (or none for adaptive)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| MAX_WINDOWS | 5000 | Number of windows to process |
+| START_WINDOW | 0 | Window index to start from |
+| GATE_PERSISTENCE | 2 | Consecutive breaches required to trigger |
+| GATE_SEVERITY_MULT | 1.0 | Score multiplier filter (1.0 = disabled) |
+| GATE_RECHECK | none | Fixed recheck interval (or none for adaptive) |
 
+```bash
 # Process all 15K windows
 MAX_WINDOWS=15000 python main.py
 
@@ -107,10 +102,11 @@ START_WINDOW=5000 MAX_WINDOWS=10000 python main.py
 
 # Fixed recheck for lower LLM cost
 GATE_RECHECK=5 python main.py
+```
 
+---
 
-⸻
-Key Design Decisions
+## Key Design Decisions
 
 Why P3, P4, P5 Only?
 
@@ -130,7 +126,7 @@ Why Tool-Calling Instead of Raw Prompting?
 
 The investigator uses a structured tool-calling loop (max 5 iterations) rather than a single prompt. This ensures the LLM follows a consistent investigation protocol: query → check rules → compare baseline → submit verdict. The structured StageVerdict schema (Pydantic) guarantees parseable output.
 
-Dataset
+## Dataset
 
 This system is evaluated on the SWaT (Secure Water Treatment) dataset from iTrust, Singapore University of Technology and Design:
 
@@ -138,17 +134,22 @@ This system is evaluated on the SWaT (Secure Water Treatment) dataset from iTrus
 - Attack data: 5 days with 36 labeled cyber-physical attacks (~450K rows)
 - 51 sensors: Flow meters, level sensors, pressure sensors, actuator states
 - 6 process stages: P1 (Raw Water), P2 (Pre-treatment), P3 (UF), P4 (De-chlorination), P5 (RO), P6 (Backwash)
-⸻
-Tech Stack
-Component	Technology
-Anomaly Detection	PyTorch (TranAD)
-Agent Framework	LangGraph (StateGraph, Send API)
-LLM Inference	Groq (Qwen 3.6 27B, GPT-OSS 120B, Llama 3.3 70B)
-Data Schemas	Pydantic v2
-Data Processing	Pandas, NumPy, scikit-learn
-Threshold Calibration	Peaks-Over-Threshold (EVT)
-⸻
-Known Limitations & Future Work
+---
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Anomaly Detection | PyTorch (TranAD) |
+| Agent Framework | LangGraph (StateGraph, Send API) |
+| LLM Inference | Groq (Qwen 3.6 27B, GPT-OSS 120B, Llama 3.3 70B) |
+| Data Schemas | Pydantic v2 |
+| Data Processing | Pandas, NumPy, scikit-learn |
+| Threshold Calibration | Peaks-Over-Threshold (EVT) |
+
+---
+
+## Known Limitations & Future Work
 
 1. Recall remains the main weakness: the strict point-wise F1 is 0.3750, which indicates that many true attacks are still missed even though precision is high.
 2. Coverage is still limited by the detector stage selection: the current MAS path relies mainly on P3, P4, and P5, so attacks that are mainly visible in P1, P2, or P6 are under-detected.
@@ -156,7 +157,9 @@ Known Limitations & Future Work
 4. Detection latency is non-trivial: several attacks are only detected after several windows, which may be too slow for time-sensitive industrial response.
 5. Results are single-run evidence: stronger claims should be based on repeated runs with different start windows and a statistical summary such as mean and standard deviation.
 6. Future work should focus on improving recall and coverage while preserving the low false-positive profile, for example through better detector calibration, stage expansion, or more selective LLM triggering.
-⸻
-License
+
+---
+
+## License
 
 This project is for academic and research purposes. The SWaT dataset is provided by iTrust, SUTD under their own licensing terms.
