@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from state import OrchestratorReport, StageVerdict
 from groq_client import DEFAULT_MODEL
 
-SYSTEM_PROMPT = """You are the Supreme Orchestrator for the SWaT water plant.
+SYSTEM_PROMPT = """You are the Supreme Command Orchestrator for the SWaT water plant.
 Multiple Stage Investigators have provided verdicts. Establish a GLOBAL consensus.
 
 Call `submit_incident_report` with:

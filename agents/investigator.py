@@ -11,7 +11,7 @@ from state import StageVerdict
 from tools import build_tool_schemas, execute_tool_with_context
 from groq_client import DEFAULT_MODEL
 
-SYSTEM_PROMPT = """You are the Sentinel Investigator Agent for Stage {stage} of the SWaT water treatment plant.
+SYSTEM_PROMPT = """You are the  Investigator Agent for Stage {stage} of the SWaT water treatment plant.
 
 Your task is to investigate an anomaly flagged by the PyTorch detector and determine if it is a genuine cyber-physical attack (True Positive) or just sensor noise (False Positive).
 

@@ -38,7 +38,7 @@ class EscalationGate:
                 if self._episode_active[stage] and self._grace_count[stage] < 1:
                     self._grace_count[stage] += 1
                     return False
-                    
+
                 hist.clear()
                 self._episode_active[stage] = False
                 self._windows_since_check[stage] = 0
@@ -48,12 +48,6 @@ class EscalationGate:
 
             self._grace_count[stage] = 0
             hist.append(score)
-
-            # Optional severity filter: only escalate if score exceeds
-            # threshold * severity_mult. At 1.0 (default) this is a no-op.
-            # Set severity_mult > 1.0 (e.g. 2.0) to require stronger anomalies.
-            if cfg.severity_mult > 1.0 and score <= cfg.threshold * cfg.severity_mult:
-                return False
 
             if self._episode_active[stage]:
                 # If a hard recheck interval is provided, use it.
@@ -70,11 +64,20 @@ class EscalationGate:
 
                 if effective_recheck is None:
                     return False
-                    
+
                 self._windows_since_check[stage] += 1
                 if self._windows_since_check[stage] >= effective_recheck:
                     self._windows_since_check[stage] = 0
                     return True
+                return False
+
+            # Optional severity filter: only gate the initial trigger.
+            # At 1.0 (default) this is a no-op. Set severity_mult > 1.0 to require
+            # stronger anomalies before opening a new episode.
+            if cfg.severity_mult > 1.0 and score <= cfg.threshold * cfg.severity_mult:
+                return False
+
+            if cfg.persistence < 1:
                 return False
 
             persistent = len(hist) == cfg.persistence and all(s > cfg.threshold for s in hist)
