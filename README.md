@@ -15,22 +15,18 @@ I built a multi-agent system that detects cyber-physical attacks on a water trea
 
 ## Demo
 
-Sample terminal session (smoke run, `MAX_WINDOWS=2`):
+Real ATTACK window from the last full run (`audit_logs.jsonl`, window 261 of 14,997):
 
 ```
-$ MAX_WINDOWS=2 python main.py
-Validating configured LLM models...
-  ✓ orchestrator: openai/gpt-oss-120b
-  ✓ investigator: qwen/qwen3.6-27b
-[detector] P3: loaded 9 features from configs/stage_p3.yaml
-2026-07-26 [INFO] Running LangGraph MAS on stages ['P1', ..., 'P6'] (Windows 0 to 2)
-[0] pred=0 gt=0 triggers={'P1': False, 'P2': False, ...}
-=== FINAL METRICS ===
-Precision: 0.9488 | Recall: 0.2337 | F1: 0.3750
-Saved mas_langgraph_results.csv
+window 261 | 2015-12-28 12:10:59 | pred=1 gt=1
+scores:   P3 0.010900 (thr 0.000910, ~12x) | P4 0.000338 | P5 0.000022
+triggers: P3=True, P4=False, P5=False  -> P3 investigator dispatched
+P3 investigator: query_sensors -> check_physical_rules -> True Positive (0.95)
+  "FIT301 reports flow (2.21) while MV301-MV304 are closed — likely tampering"
+orchestrator (gpt-oss-120b): ATTACK, involved stages [P3]
 ```
 
-Each `ATTACK` window also writes `reports/YYYY-MM-DD/incident_window_<idx>.md`.
+Why this window matters: it is the first detection in attack segment 256–270 (latency 5 windows / 150s), and the verdict rests on a physical-constraint violation, not just a high score. Full report: `reports/2026-07-26/incident_window_261.md`. Reproduce: `python grade_system.py --audit-path audit_logs.jsonl`.
 
 ## Architecture
 
