@@ -1,182 +1,157 @@
-# OT MAS — Operational Technology Multi-Agent System
+# OT-MAS — TranAD + LangGraph Multi-Agent Anomaly Detection for SWaT
 
-An operational technology anomaly detection system for SWaT that combines TranAD-based detectors, a persistence-based escalation gate, and LLM-based investigators and orchestration.
+I built a multi-agent system that detects cyber-physical attacks on a water treatment plant: six per-stage TranAD detectors score every 30-second window, a persistence gate filters noise, and LLM investigators verify only suspicious windows.
 
-<p align="center">
-<img src="https://img.shields.io/badge/PA--F1-0.8541-brightgreen" alt="PA-F1">
-<img src="https://img.shields.io/badge/Strict%20F1-0.3750-blue" alt="Strict F1">
-<img src="https://img.shields.io/badge/False%20Positives-23-orange" alt="FP">
-<img src="https://img.shields.io/badge/LLM%20Calls-4912-purple" alt="LLM Calls">
-<img src="https://img.shields.io/badge/Python-3.10%2B-blue" alt="Python">
-<img src="https://img.shields.io/badge/PyTorch-2.0%2B-red" alt="PyTorch">
-</p>
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-red)
+![License](https://img.shields.io/badge/License-MIT-green)
 
----
+## Key highlights
 
-## What this project does
+* **6 independent TranAD detectors** (K=30, hidden 64, 4 heads, Lc=900) with per-dimension POT thresholds and OR logic — no fixed 0.5 cutoff (`model.py`, `engine.py`, `detector.py`).
+* **Last full run:** strict P 0.9488 / R 0.2337 / F1 0.3750 (TP 426, FP 23, FN 1397, TN 13151) and point-adjusted F1 0.8541 over 14,997 windows. Reproduce with `python grade_system.py`.
+* **Cost-aware gating:** persistence + adaptive recheck + passthrough path means most windows cost zero LLM calls; 807/14,997 windows triggered investigation in the last run.
+* **Grounded LLM verdicts:** investigators run a bounded 5-step tool loop (`query_sensors`, `check_physical_rules`, `compare_to_baseline`) and return a Pydantic `StageVerdict`; the orchestrator merges them into `ATTACK`/`NORMAL`.
 
-This system processes SWaT windows in three stages:
+## Demo
 
-1. Detector stage
-   - Uses TranAD-style anomaly detectors for six stages.
-   - Produces per-stage scores for each 30-second window.
+Sample terminal session (smoke run, `MAX_WINDOWS=2`):
 
-2. Escalation gate
-   - Filters low-confidence or redundant triggers before invoking LLMs.
-   - Uses persistence and recheck logic to reduce unnecessary API usage.
+```
+$ MAX_WINDOWS=2 python main.py
+Validating configured LLM models...
+  ✓ orchestrator: openai/gpt-oss-120b
+  ✓ investigator: qwen/qwen3.6-27b
+[detector] P3: loaded 9 features from configs/stage_p3.yaml
+2026-07-26 [INFO] Running LangGraph MAS on stages ['P1', ..., 'P6'] (Windows 0 to 2)
+[0] pred=0 gt=0 triggers={'P1': False, 'P2': False, ...}
+=== FINAL METRICS ===
+Precision: 0.9488 | Recall: 0.2337 | F1: 0.3750
+Saved mas_langgraph_results.csv
+```
 
-3. LLM investigation + orchestration
-   - Investigators inspect suspicious windows.
-   - The orchestrator aggregates the evidence and produces a final ATTACK/NORMAL decision.
-
----
-
-## Current run summary
-
-### Strict point-wise metrics
-- Precision: 0.9488
-- Recall: 0.2337
-- F1: 0.3750
-- TP: 426
-- FP: 23
-- FN: 1,397
-- TN: 13,151
-
-### Point-adjusted SWaT-style metrics
-- Precision: 0.9836
-- Recall: 0.7548
-- F1: 0.8541
-
-### Operational metrics
-- Total windows processed: 14,997
-- Actual triggered windows: 807
-- Total LLM API calls: 4,912
-- Total prompt tokens: 5,881,645
-- Total completion tokens: 2,484,765
-
----
+Each `ATTACK` window also writes `reports/YYYY-MM-DD/incident_window_<idx>.md`.
 
 ## Architecture
 
-The pipeline is organized as follows:
+`data/*.csv` → `load_data` → 6× `StageDetectorBundle` (MinMaxScaler + TranADCore + per-dim POT) → `EscalationGate` → LangGraph (`detector` → investigators → `orchestrator`, or `passthrough` / critical override) → `audit_logs.jsonl` + `reports/` + `mas_langgraph_results.csv`.
 
 ```mermaid
 flowchart TD
-    A[SWaT Sensor Data] --> B[TranAD Detector
-P1-P6]
-    B --> C[Escalation Gate]
-    C -->|Trigger| D[Investigator P3]
-    C -->|Trigger| E[Investigator P4]
-    C -->|Trigger| F[Investigator P5]
-    D --> G[Orchestrator]
-    E --> G
-    F --> G
-    C -->|No trigger| H[Pass Through]
-    G --> I[Final ATTACK / NORMAL Verdict]
+    A[SWaT CSVs\nnormal_v1 + attack] --> B[6x StageDetectorBundle\nTranADCore Eq13 + per-dim POT + OR]
+    B --> C[EscalationGate\npersistence + adaptive recheck]
+    C -->|no trigger| P[Passthrough\npred=0, 0 LLM calls]
+    C -->|trigger| I[Investigators P1-P6\n5-step tool loop]
+    B -->|score > 50x threshold| O[Orchestrator\nconsensus]
+    I --> O
+    O --> F[final 0/1\n+ audit_logs.jsonl + reports/]
+    P --> F
 ```
 
-The main components are:
+Components: `main.py` entrypoint, `graph.py` flow, `detector.py` scoring, `escalation_gate.py` gating, `agents/investigator.py` + `agents/orchestrator.py`, `state.py` schemas, `groq_client.py` key rotation.
 
-- [main.py](main.py) — entry point for running the full MAS pipeline
-- [graph.py](graph.py) — LangGraph orchestration flow
-- [state.py](state.py) — typed state and schemas
-- [detector.py](detector.py) — detector wrappers
-- [escalation_gate.py](escalation_gate.py) — triggering and recheck logic
-- [agents/investigator.py](agents/investigator.py) — per-stage LLM investigators
-- [agents/orchestrator.py](agents/orchestrator.py) — final decision aggregation
+## Features
 
+**Detection:** per-stage TranAD, streaming `C_j` prefix (capped at 900 rows), per-sensor attribution for diagnosis.
+**Cost control:** persistence gate, severity multiplier, fixed/adaptive recheck, 50× critical-override fast path, TPD fallback to pure-detector mode.
+**Agents:** 4-function tool schemas, Pydantic-enforced verdicts, 3-model fallback chain per role, 60s per-window timeout.
+**Eval:** strict + point-adjusted P/R/F1, per-stage ROC-AUC, Hit@P% / NDCG@P, segment latency, `grade_system.py` report.
 
+## Benchmarks / Results
 
+| Metric | Value (last run) |
+|---|---|
+| Windows | 14,997 (30-row, non-overlapping) |
+| Strict P / R / F1 | 0.9488 / 0.2337 / 0.3750 |
+| TP / FP / FN / TN | 426 / 23 / 1397 / 13151 |
+| Point-adjusted P / R / F1 | 0.9836 / 0.7548 / 0.8541 |
+| Windows triggering LLM | 807 |
+| LLM calls | 4,912 |
+| Prompt / completion tokens | [TODO: tokens — see below] |
+| Per-stage AUC | [TODO: run `python train.py --all --eval`] |
 
-## How to run
+Methodology: hardware [TODO: chip + RAM, e.g. Apple Silicon M1/16GB]; workload = full `data/attack.csv` from `START_WINDOW=0`, `MAX_WINDOWS=15000`; detector-only AUC is gate-free (`train.py --eval`); MAS metrics from `audit_logs.jsonl` via `python grade_system.py --audit-path audit_logs.jsonl`. Single run — no mean±std yet.
+
+Note: token counts disagree between sources (old README: 5.88M/2.48M; `grade_system.py` hardcodes 2.26M/1.35M). Rerun grading on the current audit log to confirm.
+
+## Design decisions and trade-offs
+
+1. **Six small detectors vs. one monolith.** Per-stage models isolate sensor distributions (P5 RO vs. P1 hydraulics) and allow per-dim POT. Cost: 6× training and thresholds. `weights/monolithic_tranad.pth` is unused legacy.
+2. **Per-dimension POT + OR vs. scalar threshold.** Fits an EVT tail per sensor instead of averaging away a single spiking sensor. Cost: more thresholds to calibrate; `weights/thresholds.json` currently holds only P6.
+3. **Persistence gate vs. per-window LLM.** Requires N consecutive breaches before investigating, cutting calls to 807/14,997. Cost: 30–60s added delay; misses single-window bursts.
+4. **Tool-calling loop (max 5) vs. single prompt.** Forces `query → physics-check → baseline → verdict` with parseable `StageVerdict`. Cost: 3–5× tokens per investigation vs. one-shot.
+5. **50× critical override vs. pure LLM consensus.** Physically impossible scores skip debate and emit `ATTACK`. Cost: a miscalibrated threshold could auto-escalate noise.
+
+## Quick start
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+# 1. Python 3.12 required (repo venv runs 3.12.4; system 3.14 will fail)
+python3.12 --version
+
+# 2. Install
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python3 main.py
-```
 
----
+# 3. Configure (required — clone ships without keys/data/weights)
+cp .env.example .env
+# edit .env: add GROQ_API_KEY_1=... (up to _20 supported)
+# place data: data/normal_v1.csv, data/attack.csv (gated SWaT license, not in git)
 
-
-## Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| MAX_WINDOWS | 5000 | Number of windows to process |
-| START_WINDOW | 0 | Window index to start from |
-| GATE_PERSISTENCE | 2 | Consecutive breaches required to trigger |
-| GATE_SEVERITY_MULT | 1.0 | Score multiplier filter (1.0 = disabled) |
-| GATE_RECHECK | none | Fixed recheck interval (or none for adaptive) |
-
-```bash
-# Process all 15K windows
+# 4. Smoke test, then full run (~3.5h on Apple Silicon)
+MAX_WINDOWS=100 python main.py
 MAX_WINDOWS=15000 python main.py
 
-# Resume from window 5000
-START_WINDOW=5000 MAX_WINDOWS=10000 python main.py
-
-# Fixed recheck for lower LLM cost
-GATE_RECHECK=5 python main.py
+# 5. Evaluate
+python grade_system.py --audit-path audit_logs.jsonl  # -> grade_report.md
+python train.py --all --eval  # gate-free detector AUC per stage, no LLM cost
 ```
 
----
+Env flags: `START_WINDOW` resumes, `GATE_PERSISTENCE=2`, `GATE_SEVERITY_MULT=1.0` (disabled), `GATE_RECHECK=none` (adaptive 8/13/6). Verified against `main.py`.
 
-## Key Design Decisions
+> Flags / broken bits: `requirements.txt` is unpinned (`torch`, `langgraph`, `groq` float) — run `pip freeze` after a good run and pin. `data/` and `weights/*.pth` are gitignored, so a fresh clone cannot run until you add them. `thresholds.json` is incomplete (only P6) — others fall back to frozen values in `detector.py`.
 
-Why P3, P4, P5 Only?
+## Project structure
 
-The 6 TranAD detectors were evaluated on ROC-AUC. Stages P1, P2, and P6 showed low discriminative power and were excluded from the LLM pipeline to reduce API costs without sacrificing detection quality. grade_system.py produces the full per-stage comparison to validate this decision.
+```
+main.py                 # full MAS run, metrics + CSV + reports/
+train.py                # per-stage train / calibrate / --eval
+graph.py                # LangGraph: detector -> investigators -> orchestrator
+detector.py / engine.py / model.py   # scoring, training loop, TranADCore
+escalation_gate.py      # persistence + adaptive recheck gate
+agents/                 # investigator.py, orchestrator.py (tool loops)
+tools.py                # ACTIVE_STAGES + 4 tools (physics rules: P3-P5 only)
+state.py / metrics.py / data_utils.py / diagnosis_labels.py
+configs/stage_p*.yaml   # per-stage features + Lc
+weights/                # agent_p*.pth + thresholds.json (gitignored)
+data/                   # NOT in git — SWaT CSVs go here
+grade_system.py         # audit-log grading -> grade_report.md
+```
 
-Trade-off: This exclusion is the primary reason for the low attack coverage (26%). Many attacks target P1/P2/P6 exclusively and are invisible to the MAS pipeline.
+## Testing
 
-Why an Escalation Gate?
+No unit tests (`**/test*.py` finds none). Current verification is end-to-end:
 
-Without the gate, the raw detector generates ~1,989 threshold breaches — each would trigger an LLM call. The gate requires N consecutive breaches (persistence) and suppresses re-investigation during active episodes, reducing threshold breaches by 55.6% while maintaining detection quality.
+```bash
+.venv/bin/python train.py --all --eval
+.venv/bin/python grade_system.py
+```
 
-Why LLM Agents?
+Covers: `metrics.py` strict/adjusted scoring, per-sensor ground truth, gate trigger counts. Missing: mocked-LLM investigator tests, gate unit tests, multi-seed repeats.
 
-The detector answers "is something wrong?" The LLM answers "what is wrong and should we act?" By giving the LLM access to tools (sensor queries, physical constraint checks, baseline comparisons), it can distinguish a genuine attack from sensor noise with 91.8% precision — eliminating 97.2% of false positives.
+## Limitations and future work
 
-Why Tool-Calling Instead of Raw Prompting?
+* Recall 0.23 strict — many attacks missed; point-adjusted flatters latency.
+* `check_physical_rules` covers only P3/P4/P5; P1/P2/P6 rely on statistics alone.
+* ~5K LLM calls per full run is expensive; needs caching + cheaper first pass.
+* Single run, Apple Silicon only; need 5× `START_WINDOW` offsets + mean±std.
+* Next: backfill `thresholds.json`, add P1/P2/P6 rules, add `pytest` gate + tool tests.
 
-The investigator uses a structured tool-calling loop (max 5 iterations) rather than a single prompt. This ensures the LLM follows a consistent investigation protocol: query → check rules → compare baseline → submit verdict. The structured StageVerdict schema (Pydantic) guarantees parseable output.
+## Tech stack
 
-## Dataset
+PyTorch (TranAD) · LangGraph + LangChain-Core · Groq (Qwen 3.6 27B, GPT-OSS 120B/20B, Llama 3.3 70B) · Pydantic v2 · pandas / NumPy / scikit-learn · PyYAML · python-dotenv
 
-This system is evaluated on the SWaT (Secure Water Treatment) dataset from iTrust, Singapore University of Technology and Design:
+## Contact
 
-- Normal data: 7 days of normal operation (~495K rows at 1Hz)
-- Attack data: 5 days with 36 labeled cyber-physical attacks (~450K rows)
-- 51 sensors: Flow meters, level sensors, pressure sensors, actuator states
-- 6 process stages: P1 (Raw Water), P2 (Pre-treatment), P3 (UF), P4 (De-chlorination), P5 (RO), P6 (Backwash)
----
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|------------|
-| Anomaly Detection | PyTorch (TranAD) |
-| Agent Framework | LangGraph (StateGraph, Send API) |
-| LLM Inference | Groq (Qwen 3.6 27B, GPT-OSS 120B, Llama 3.3 70B) |
-| Data Schemas | Pydantic v2 |
-| Data Processing | Pandas, NumPy, scikit-learn |
-| Threshold Calibration | Peaks-Over-Threshold (EVT) |
-
----
-
-## Known Limitations & Future Work
-
-1. Recall remains the main weakness: the strict point-wise F1 is 0.3750, which indicates that many true attacks are still missed even though precision is high.
-2. Coverage is still limited by the detector stage selection: the current MAS path relies mainly on P3, P4, and P5, so attacks that are mainly visible in P1, P2, or P6 are under-detected.
-3. LLM cost is substantial: the current run used 4,912 LLM calls and 5.88M prompt tokens, which makes the pipeline expensive to operate at scale.
-4. Detection latency is non-trivial: several attacks are only detected after several windows, which may be too slow for time-sensitive industrial response.
-5. Results are single-run evidence: stronger claims should be based on repeated runs with different start windows and a statistical summary such as mean and standard deviation.
-6. Future work should focus on improving recall and coverage while preserving the low false-positive profile, for example through better detector calibration, stage expansion, or more selective LLM triggering.
-
----
-
-## License
-
-This project is for academic and research purposes. The SWaT dataset is provided by iTrust, SUTD under their own licensing terms.
+* GitHub: [@ima-d-ice](https://github.com/ima-d-ice) — repo `MASOTCYBER`
+* Dataset: SWaT (iTrust, SUTD) — request access separately, not redistributable.
+* License: MIT — see `LICENSE`.

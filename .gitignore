@@ -1,4 +1,4 @@
-# Virtual environment
+# Virtual environments
 venv/
 .venv/
 
@@ -8,32 +8,24 @@ __pycache__/
 *.pyo
 *.egg-info/
 
-# Environment / Secrets
+# Environment / Secrets (keep .env.example tracked)
 .env
-*.env
+!.env.example
 
 # macOS
 .DS_Store
 
-# Model weights (large binary files)
-weights/*.pth
+# Model weights (large binaries; unignore to commit, or use Git LFS + Releases)
+# weights/*.pth
 
-# Data (large files)
+# SWaT data (gated license, never commit)
 data/*.csv
-venv/
-.venv/
-data/*.csv
-*.csv
 
 # Runtime outputs
 audit_logs.jsonl
 mas_langgraph_results.csv
 mas_langgraph_logs.json
-/reports/
+reports/
 sweep_results.csv
-sweep_hyperparams_no_llm.py
 sweep_summary.md
 grade_report.md
-grade_system.py
-analyze_sweep.py
-groq_client.py
